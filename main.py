@@ -8,8 +8,7 @@ import downloader
 # Set logging level
 logging.basicConfig(level=logging.INFO)
 
-# Simple in-memory conversation state.
-# In production, you might use a persistent store.
+# In-memory conversation state. In production, consider a persistent store.
 conversations = {}
 
 def reset_conversation(chat_id):
@@ -18,7 +17,7 @@ def reset_conversation(chat_id):
 # Initialize Pyrogram client.
 app = Client("parmar_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# /start command: start the conversation.
+# /start command: begin the conversation.
 @app.on_message(filters.command("start"))
 def start_cmd(client, message):
     chat_id = message.chat.id
@@ -147,4 +146,4 @@ def cancel_cmd(client, message):
 
 if __name__ == "__main__":
     print("Bot started. Press Ctrl+C to exit.")
-    app.run()  # Starts the Pyrogram client using long polling.
+    app.run()  # Start the Pyrogram client using long polling.
