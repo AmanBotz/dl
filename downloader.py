@@ -45,12 +45,18 @@ def get_titles_of_topic(course_id, subject_id):
 
 def get_all_video_links(course_id, subject_id, topic_id):
     """Retrieve list of video links for a topic."""
-    res = requests.get(HOST + f"/get/livecourseclassbycoursesubtopconceptapiv3?courseid={course_id}&subjectid={subject_id}&topicid={topic_id}&conceptid=&windowsapp=false&start=-1", headers=HEADERS).json()
+    res = requests.get(
+        HOST + f"/get/livecourseclassbycoursesubtopconceptapiv3?courseid={course_id}&subjectid={subject_id}&topicid={topic_id}&conceptid=&windowsapp=false&start=-1",
+        headers=HEADERS
+    ).json()
     return res["data"]
 
 def get_video_token(course_id, video_id):
     """Retrieve video token used to fetch video player HTML."""
-    res = requests.get(HOST + f"/get/fetchVideoDetailsById?course_id={course_id}&video_id={video_id}&ytflag=0&folder_wise_course=0", headers=HEADERS).json()
+    res = requests.get(
+        HOST + f"/get/fetchVideoDetailsById?course_id={course_id}&video_id={video_id}&ytflag=0&folder_wise_course=0",
+        headers=HEADERS
+    ).json()
     return res["data"]["video_player_token"]
 
 def get_video_html(token):
@@ -59,30 +65,30 @@ def get_video_html(token):
     return res
 
 # -------------------------------
-# Downloading and merging video segments (using default concatenation method)
+# Downloading and merging video segments (default concatenation)
 # -------------------------------
 def download_video(course, subject, topic, video, output_dir):
     """
     Downloads all segments of the selected video via the m3u8 playlist,
-    then merges them using a simple file concatenation method.
+    then merges them by concatenating the downloaded segment files.
     Returns the merged video file path.
     """
     course_id = course['id']
     video_id = video['id']
     token = get_video_token(course_id, video_id)
     html = get_video_html(token)
+    
     # Adjust HTML content: fix relative URLs and quality settings
     html = html.replace('src="/', 'src="https://www.parmaracademy.in/')
     html = html.replace('href="/', 'href="https://www.parmaracademy.in/')
     html = html.replace('"quality":"360p","isPremier":', '"quality":"720p","isPremier":')
 
-    # Optionally save HTML for debugging purposes
+    # Save HTML for debugging purposes
     html_file = os.path.join(output_dir, f"{video['Title']}.html")
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html)
 
     # Extract m3u8 URL from the HTML content
-    m3u8_url = None
     m = re.search(r'(https://.*?\.m3u8)', html)
     if m:
         m3u8_url = m.group(1)
@@ -91,11 +97,13 @@ def download_video(course, subject, topic, video, output_dir):
         return None
 
     logging.info(f"Found m3u8 URL: {m3u8_url}")
+    
     # Load the m3u8 playlist
     playlist = m3u8.load(m3u8_url)
     segment_dir = os.path.join(output_dir, "segments")
     os.makedirs(segment_dir, exist_ok=True)
     segment_files = []
+    
     # Download every segment in the playlist sequentially
     for idx, segment in enumerate(playlist.segments):
         segment_url = segment.uri
@@ -111,8 +119,10 @@ def download_video(course, subject, topic, video, output_dir):
             except Exception as e:
                 logging.warning(f"Error downloading segment {idx}, attempt {attempt+1}: {e}")
                 time.sleep(2)
-    # Merge segments using default concatenation method
-    merged_file = os.path.join(output_dir, f"{re.sub(r'\\W', '', video['Title'])}.mp4")
+    
+    # Merge segments by concatenating the files
+    cleaned_title = re.sub(r'\W', '', video['Title'])
+    merged_file = os.path.join(output_dir, f"{cleaned_title}.mp4")
     temp_file = merged_file + ".bak"
     with open(temp_file, "wb") as output:
         for seg in segment_files:
