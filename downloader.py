@@ -148,6 +148,7 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
         threads = []
         batch = playlist.segments[i:i + max_thread]
         for j, segment in enumerate(batch):
+            # Use full video download (max_segment=0 means no limit)
             if max_segment and (i + j) >= max_segment:
                 break
             segment_url = segment.uri
@@ -163,7 +164,7 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
             t.join()
         if max_segment and (i + len(batch)) >= max_segment:
             break
-    # Sort the segment files by numerical index
+    # Sort segment files by numerical index
     segment_files = sorted(segment_files, key=lambda f: int(re.search(r'_(\d+)\.ts$', f).group(1)))
     print("[Downloader] Combining segments in sorted order...")
     try:
@@ -183,6 +184,7 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
         print(f"[Downloader] Error combining segments: {e}")
         return None
 
+    # Repackage TS file into MP4 using FFmpeg
     final_output = output_file + ".mp4"
     try:
         print(f"[Downloader] Repackaging {combined_ts} into {final_output} using FFmpeg...")
@@ -216,10 +218,19 @@ def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_
             print("[Downloader] Missing required fields in JSON data.")
             return None
         data_dec_key = get_data_enc_key(datetime_val, token)
-        one = urls[0]
-        quality = one.get("quality", "unknown")  # Expect quality to be "360p" for testing
-        kstr = one.get("kstr")
-        jstr = one.get("jstr")
+        # Search for the 360p URL, if available:
+        chosen = None
+        for item in urls:
+            if item.get("quality") == "360p":
+                chosen = item
+                break
+        if not chosen:
+            chosen = urls[0]
+        quality = chosen.get("quality", "unknown")
+        # Force quality to 360p for testing
+        quality = "360p"
+        kstr = chosen.get("kstr")
+        jstr = chosen.get("jstr")
         output_file = output_file + " " + quality
         if os.path.exists(output_file + ".mp4") or os.path.exists(output_file + ".ts"):
             print(f"[Downloader] Video already downloaded: {output_file}")
