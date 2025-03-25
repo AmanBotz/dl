@@ -167,21 +167,28 @@ def text_handler(client, message: Message):
         state.clear()
 
 def process_video_download(chat_id: int, sent_msg, state):
+    print("[Bot] Starting video download process.")
     course_id = state["selected_course"]["id"]
     video_id = state["selected_video"]["id"]
     video_title = re.sub(r'\W', '', state["selected_video"]["Title"])
+    print(f"[Bot] Video title: {video_title}")
     token = get_video_token(course_id, video_id)
+    print("[Bot] Retrieved video token.")
     html = get_video_html(token)
+    print("[Bot] Retrieved video HTML.")
     if "Token Expired" in html:
         sent_msg.reply_text("Token expired. Please try again later.")
         return
     output_file = f"{video_title}"
+    print("[Bot] Initiating download via downloader module.")
     result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=5, max_segment=0)
     if result and os.path.exists(result):
         sent_msg.reply_text("Download complete! Sending video...")
+        print(f"[Bot] Download complete. Sending video: {result}")
         app.send_video(chat_id, result, caption=video_title)
     else:
         sent_msg.reply_text("Failed to download video.")
+        print("[Bot] Failed to download video.")
 
 def run_bot():
     app.run()
