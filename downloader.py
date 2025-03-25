@@ -8,6 +8,7 @@ import hashlib
 import requests
 import m3u8
 import threading
+import subprocess
 from base64 import b64decode
 from Crypto.Cipher import AES
 
@@ -162,7 +163,8 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
             t.join()
     print("[Downloader] Combining segments...")
     try:
-        with open(output_file + ".bak", "wb") as output:
+        combined_ts = output_file + ".ts"
+        with open(combined_ts + ".bak", "wb") as output:
             for segment_file in segment_files:
                 seg_path = directory + segment_file
                 if os.path.exists(seg_path):
@@ -171,10 +173,24 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
                     os.remove(seg_path)
                 else:
                     print(f"[Downloader] Warning: Missing segment file {seg_path}.")
-        os.rename(output_file + ".bak", output_file)
-        print(f"[Downloader] Video saved as {output_file}")
+        os.rename(combined_ts + ".bak", combined_ts)
+        print(f"[Downloader] Combined TS file saved as {combined_ts}")
     except Exception as e:
         print(f"[Downloader] Error combining segments: {e}")
+        return None
+
+    # Repackage the combined TS file into MP4 using FFmpeg
+    final_output = output_file + ".mp4"
+    try:
+        print(f"[Downloader] Repackaging {combined_ts} into {final_output} using FFmpeg...")
+        subprocess.run(["ffmpeg", "-y", "-i", combined_ts, "-c", "copy", final_output], check=True)
+        print(f"[Downloader] Video repackaged successfully into {final_output}")
+        # Optionally, remove the combined TS file
+        os.remove(combined_ts)
+        return final_output
+    except Exception as e:
+        print(f"[Downloader] Error repackaging video: {e}")
+        return combined_ts  # Return TS file if repackaging fails
 
 def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_segment=0):
     print("[Downloader] Extracting JSON data from HTML.")
@@ -202,10 +218,11 @@ def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_
         quality = one.get("quality", "unknown")
         kstr = one.get("kstr")
         jstr = one.get("jstr")
-        output_file = output_file + " " + quality + ".mp4"
-        if os.path.exists(output_file):
+        output_file = output_file + " " + quality
+        # Check if output file already exists (either mp4 or ts)
+        if os.path.exists(output_file + ".mp4") or os.path.exists(output_file + ".ts"):
             print(f"[Downloader] Video already downloaded: {output_file}")
-            return output_file
+            return output_file + ".mp4" if os.path.exists(output_file + ".mp4") else output_file + ".ts"
         try:
             video_dec_key = decrypt_data(kstr, data_dec_key, iv)
             video_dec_key = base64.b64decode(video_dec_key)
@@ -215,12 +232,8 @@ def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_
             return None
         print("[Downloader] Parsing m3u8 playlist.")
         playlist = m3u8.loads(video_m3u8)
-        try:
-            download_m3u8_playlist(playlist, output_file, video_dec_key, ".temp/", max_thread, max_segment)
-        except Exception as e:
-            print(f"[Downloader] Error in download_m3u8_playlist: {e}")
-            return None
-        return output_file
+        result = download_m3u8_playlist(playlist, output_file, video_dec_key, ".temp/", max_thread, max_segment)
+        return result
     else:
         print("[Downloader] Failed to extract JSON data from HTML.")
         return None
