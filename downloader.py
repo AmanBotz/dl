@@ -177,15 +177,15 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
         print(f"[Downloader] Error combining segments: {e}")
         return None
 
-    # Instead of converting TS to MP4, we now convert the TS file to MP4 via re-encoding
     final_output = output_file + ".mp4"
     try:
         print(f"[Downloader] Converting {combined_ts} to {final_output} using FFmpeg (re-encoding)...")
         subprocess.run([
-            "ffmpeg", "-y", "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
+            "ffmpeg", "-y", "-fflags", "+genpts", "-copyts", "-start_at_zero",
             "-i", combined_ts,
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
             "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart",
             final_output
         ], check=True)
         print(f"[Downloader] Video converted successfully into {final_output}")
