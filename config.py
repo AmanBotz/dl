@@ -1,13 +1,14 @@
+# config.py
 import os
 
-# Telegram API credentials for Pyrogram – set these as environment variables.
-API_ID = int(os.environ.get("TG_API_ID", 123456))  # Replace with your actual API_ID
-API_HASH = os.environ.get("TG_API_HASH", "YOUR_API_HASH")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN")
+# Telegram Bot configuration
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "your_bot_token_here")
+API_ID = int(os.environ.get("API_ID", "12345"))
+API_HASH = os.environ.get("API_HASH", "your_api_hash_here")
 
-# Parmar Academy API credentials – these are now in config.
+# Parmar Videos Download API credentials
 USER_ID = os.environ.get("USER_ID", "582457")
-AUTHORIZATION = os.environ.get("AUTHORIZATION", "YOUR_AUTHORIZATION_TOKEN")
+AUTHORIZATION = os.environ.get("AUTHORIZATION", "your_authorization_token_here")
 
-# API host for Parmar Academy
-HOST = "https://parmaracademyapi.classx.co.in"
+# Deployment settings
+PORT = int(os.environ.get("PORT", 8000))
