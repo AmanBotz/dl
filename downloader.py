@@ -177,21 +177,8 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
         print(f"[Downloader] Error combining segments: {e}")
         return None
 
-    final_output = output_file + ".mp4"
-    try:
-        print(f"[Downloader] Converting {combined_ts} to {final_output} using FFmpeg with stream copy...")
-        subprocess.run([
-            "ffmpeg", "-y", "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
-            "-i", combined_ts,
-            "-c", "copy",
-            final_output
-        ], check=True)
-        print(f"[Downloader] Video converted successfully into {final_output}")
-        os.remove(combined_ts)
-        return final_output
-    except Exception as e:
-        print(f"[Downloader] Error converting video: {e}")
-        return combined_ts
+    # Instead of converting TS to MP4, we return the TS file directly.
+    return combined_ts
 
 def extract_quality_options(html):
     print("[Downloader] Extracting quality options from HTML.")
