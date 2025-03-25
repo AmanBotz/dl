@@ -148,7 +148,6 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
         threads = []
         batch = playlist.segments[i:i + max_thread]
         for j, segment in enumerate(batch):
-            # Limit to max_segment segments if set
             if max_segment and (i + j) >= max_segment:
                 break
             segment_url = segment.uri
@@ -162,10 +161,9 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
             t.start()
         for t in threads:
             t.join()
-        # If max_segment limit reached, break out of outer loop
         if max_segment and (i + len(batch)) >= max_segment:
             break
-    # Sort the segment files by numerical index extracted from filename
+    # Sort the segment files by numerical index
     segment_files = sorted(segment_files, key=lambda f: int(re.search(r'_(\d+)\.ts$', f).group(1)))
     print("[Downloader] Combining segments in sorted order...")
     try:
@@ -185,7 +183,6 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
         print(f"[Downloader] Error combining segments: {e}")
         return None
 
-    # Repackage the combined TS file into MP4 using FFmpeg
     final_output = output_file + ".mp4"
     try:
         print(f"[Downloader] Repackaging {combined_ts} into {final_output} using FFmpeg...")
@@ -220,7 +217,7 @@ def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_
             return None
         data_dec_key = get_data_enc_key(datetime_val, token)
         one = urls[0]
-        quality = one.get("quality", "unknown")
+        quality = one.get("quality", "unknown")  # Expect quality to be "360p" for testing
         kstr = one.get("kstr")
         jstr = one.get("jstr")
         output_file = output_file + " " + quality
