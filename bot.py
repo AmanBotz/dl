@@ -74,7 +74,7 @@ def get_video_html(token):
     html = response.text
     html = html.replace('src="/', 'src="https://www.parmaracademy.in/')
     html = html.replace('href="/', 'href="https://www.parmaracademy.in/')
-    # Removed quality upgrade replacement; use original quality (e.g., 360p)
+    html = html.replace('"quality":"360p","isPremier":', '"quality":"720p","isPremier":')
     return html
 
 app = Client("parmar_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
@@ -158,8 +158,8 @@ def text_handler(client, message: Message):
             return
         selected_video = videos[choice - 1]
         state["selected_video"] = selected_video
-        sent_msg = message.reply_text(f"Selected video: {selected_video['Title']}\nStarting full download at 360p...")
-        # For full video download, pass max_segment=0 (or omit the parameter)
+        sent_msg = message.reply_text(f"Selected video: {selected_video['Title']}\nStarting download...")
+        # For full video download, pass max_segment=0
         threading.Thread(target=process_video_download, args=(chat_id, sent_msg, state, 0)).start()
         state.clear()
 
@@ -178,7 +178,6 @@ def process_video_download(chat_id: int, sent_msg, state, max_seg):
         return
     output_file = f"{video_title}"
     print("[Bot] Initiating download via downloader module.")
-    # max_seg=0 downloads full video
     result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=5, max_segment=max_seg)
     if result and os.path.exists(result):
         sent_msg.reply_text("Download complete! Sending video...")
