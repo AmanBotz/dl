@@ -7,6 +7,7 @@ import requests
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from config import BOT_TOKEN, API_ID, API_HASH, USER_ID, AUTHORIZATION
+from downloader import handle_download_start
 
 BASE_URL = "https://parmaracademyapi.classx.co.in"
 user_state = {}
@@ -72,24 +73,10 @@ def get_video_html(token):
     url = f"https://player.akamai.net.in/secure-player?token={token}&watermark="
     response = requests.get(url)
     html = response.text
-    # Adjust resource links for absolute paths
     html = html.replace('src="/', 'src="https://www.parmaracademy.in/')
     html = html.replace('href="/', 'href="https://www.parmaracademy.in/')
-    # Force quality upgrade if needed
     html = html.replace('"quality":"360p","isPremier":', '"quality":"720p","isPremier":')
     return html
-
-# ---------- SIMULATED DOWNLOAD FUNCTION ----------
-def simulate_download(chat_id: int, message: Message, video_title: str):
-    # Simulate a download delay (e.g., 30 seconds) without progress edits.
-    time.sleep(30)
-    video_path = "sample.mp4"
-    if not os.path.exists(video_path):
-        # Create a dummy video file (1 MB) if it doesn't exist.
-        with open(video_path, "wb") as f:
-            f.write(b"\x00" * 1024 * 1024)
-    message.reply_text("Download complete! Sending video...")
-    app.send_video(chat_id, video_path, caption=video_title)
 
 # ---------- BOT HANDLERS ----------
 app = Client("parmar_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
@@ -105,7 +92,6 @@ def start_handler(client, message: Message):
     user_state[chat_id]["courses"] = courses
     message.reply_text(text)
 
-# Updated filter: use regex to ignore commands (messages starting with "/")
 @app.on_message(filters.text & ~filters.regex(r"^/"))
 def text_handler(client, message: Message):
     chat_id = message.chat.id
@@ -189,7 +175,13 @@ def process_video_download(chat_id: int, sent_msg, state):
     if "Token Expired" in html:
         sent_msg.reply_text("Token expired. Please try again later.")
         return
-    simulate_download(chat_id, sent_msg, video_title)
+    output_file = f"{video_title}"
+    result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=5, max_segment=0)
+    if result and os.path.exists(result):
+        sent_msg.reply_text("Download complete! Sending video...")
+        app.send_video(chat_id, result, caption=video_title)
+    else:
+        sent_msg.reply_text("Failed to download video.")
 
 def run_bot():
     app.run()
