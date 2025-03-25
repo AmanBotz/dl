@@ -12,7 +12,6 @@ BASE_URL = "https://parmaracademyapi.classx.co.in"
 user_state = {}
 
 # ---------- API CALL FUNCTIONS ----------
-
 def get_all_courses():
     url = f"{BASE_URL}/get/courselist?exam_name=&start=0"
     response = requests.get(url, headers={
@@ -106,7 +105,8 @@ def start_handler(client, message: Message):
     user_state[chat_id]["courses"] = courses
     message.reply_text(text)
 
-@app.on_message(filters.text & ~filters.command())
+# Updated filter: use regex to ignore commands (messages starting with "/")
+@app.on_message(filters.text & ~filters.regex(r"^/"))
 def text_handler(client, message: Message):
     chat_id = message.chat.id
     if chat_id not in user_state:
