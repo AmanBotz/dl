@@ -3,11 +3,60 @@ import os
 import re
 import time
 import threading
+import json
+import subprocess
 import requests
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from config import BOT_TOKEN, API_ID, API_HASH, USER_ID, AUTHORIZATION
-from downloader import handle_download_start
+from downloader import handle_download_start, extract_quality_options
+
+# Helper functions for metadata extraction
+def run_cmd(cmd):
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    lines = []
+    while True:
+        line = proc.stdout.readline()
+        if not line:
+            break
+        lines.append(line.strip())
+    proc.wait()
+    return proc.returncode, "\n".join(lines)
+
+def ffprobe_info(filepath):
+    cmd = [
+        "ffprobe", "-v", "quiet",
+        "-print_format", "json",
+        "-show_streams",
+        filepath
+    ]
+    code, out = run_cmd(cmd)
+    if code != 0:
+        return None, None, None
+    try:
+        info = json.loads(out)
+        for s in info.get("streams", []):
+            if s.get("codec_type") == "video":
+                dur = float(s.get("duration", 0.0))
+                w = s.get("width", 0)
+                h = s.get("height", 0)
+                return dur, w, h
+    except Exception as e:
+        print(f"[Bot] ffprobe error: {e}")
+    return None, None, None
+
+def extract_thumbnail(filepath, thumb_path):
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", filepath,
+        "-ss", "1",
+        "-vframes", "1",
+        thumb_path
+    ]
+    code, out = run_cmd(cmd)
+    if code != 0 or not os.path.exists(thumb_path):
+        return None
+    return thumb_path
 
 BASE_URL = "https://parmaracademyapi.classx.co.in"
 user_state = {}
@@ -74,11 +123,11 @@ def get_video_html(token):
     html = response.text
     html = html.replace('src="/', 'src="https://www.parmaracademy.in/')
     html = html.replace('href="/', 'href="https://www.parmaracademy.in/')
-    html = html.replace('"quality":"360p","isPremier":', '"quality":"720p","isPremier":')
     return html
 
 app = Client("parmar_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
 
+# States: course, subject, topic, video, quality
 @app.on_message(filters.command("start"))
 def start_handler(client, message: Message):
     chat_id = message.chat.id
@@ -102,6 +151,7 @@ def text_handler(client, message: Message):
     except ValueError:
         message.reply_text("Please send a valid number corresponding to the option.")
         return
+
     if state["step"] == "course":
         courses = state.get("courses", [])
         if not (1 <= choice <= len(courses)):
@@ -158,37 +208,94 @@ def text_handler(client, message: Message):
             return
         selected_video = videos[choice - 1]
         state["selected_video"] = selected_video
-        sent_msg = message.reply_text(f"Selected video: {selected_video['Title']}\nStarting download...")
-        # For full video download, pass max_segment=0
-        threading.Thread(target=process_video_download, args=(chat_id, sent_msg, state, 0)).start()
-        state.clear()
+        # Retrieve video token and HTML
+        token = get_video_token(state["selected_course"]["id"], selected_video["id"])
+        html = get_video_html(token)
+        # Extract quality options from HTML
+        decoded_data, quality_list = extract_quality_options(html)
+        if not quality_list:
+            # No quality options, default to original flow
+            state["video_html"] = html
+            state["quality_data"] = None
+            state["selected_quality_index"] = 0
+            state["step"] = "download"
+            message.reply_text("No quality options found, proceeding with default.")
+            process_video_download(chat_id, state)
+        else:
+            # Present quality options to user
+            text = "Select quality:\n"
+            for idx, q in enumerate(quality_list, start=1):
+                text += f"{idx}. {q}\n"
+            state["video_html"] = html
+            state["quality_data"] = decoded_data
+            state["quality_options"] = quality_list
+            state["step"] = "quality"
+            message.reply_text(text)
+    elif state["step"] == "quality":
+        # Process quality selection
+        quality_options = state.get("quality_options", [])
+        if not (1 <= choice <= len(quality_options)):
+            message.reply_text("Invalid quality number. Try again.")
+            return
+        state["selected_quality_index"] = choice - 1
+        state["step"] = "download"
+        message.reply_text(f"Selected quality: {quality_options[choice-1]}\nStarting download...")
+        process_video_download(chat_id, state)
+    elif state["step"] == "download":
+        # Should not reach here as download is automatic
+        message.reply_text("Processing download...")
 
-def process_video_download(chat_id: int, sent_msg, state, max_seg):
+def process_video_download(chat_id: int, state):
     print("[Bot] Starting video download process.")
     course_id = state["selected_course"]["id"]
     video_id = state["selected_video"]["id"]
     video_title = re.sub(r'\W', '', state["selected_video"]["Title"])
     print(f"[Bot] Video title: {video_title}")
-    token = get_video_token(course_id, video_id)
-    print("[Bot] Retrieved video token.")
-    html = get_video_html(token)
-    print("[Bot] Retrieved video HTML.")
-    if "Token Expired" in html:
-        sent_msg.reply_text("Token expired. Please try again later.")
+    html = state.get("video_html")
+    if not html:
+        message = "Error: No video HTML found."
+        print("[Bot] " + message)
         return
+    # Get quality index from state (default 0)
+    quality_index = state.get("selected_quality_index", 0)
     output_file = f"{video_title}"
-    print("[Bot] Initiating download via downloader module.")
-    result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=5, max_segment=max_seg)
+    print(f"[Bot] Initiating download via downloader module using quality index {quality_index}.")
+    result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=5, max_segment=0, quality_index=quality_index)
     if result and os.path.exists(result):
-        sent_msg.reply_text("Download complete! Sending video...")
-        print(f"[Bot] Download complete. Sending video: {result}")
-        app.send_video(chat_id, result, caption=video_title)
+        # Get metadata with ffprobe
+        duration, width, height = ffprobe_info(result)
+        if duration is None:
+            duration = 0
+        if width is None:
+            width = 640
+        if height is None:
+            height = 360
+        send_duration = int(duration)
+        if send_duration < 1:
+            send_duration = 1
+        thumb_path = os.path.join(os.getcwd(), "temp_thumb.jpg")
+        thumb = extract_thumbnail(result, thumb_path)
+        try:
+            app.send_video(
+                chat_id=chat_id,
+                video=result,
+                caption=video_title,
+                duration=send_duration,
+                width=width,
+                height=height,
+                thumb=thumb,
+                supports_streaming=True
+            )
+        except Exception as e:
+            app.send_message(chat_id=chat_id, text=f"Error sending video: {e}")
+            print(f"[Bot] Error sending video: {e}")
+        if thumb and os.path.exists(thumb):
+            os.remove(thumb)
     else:
-        sent_msg.reply_text("Failed to download video.")
+        app.send_message(chat_id=chat_id, text="Failed to download video.")
         print("[Bot] Failed to download video.")
 
-def run_bot():
-    app.run()
-
 if __name__ == "__main__":
+    def run_bot():
+        app.run()
     run_bot()
