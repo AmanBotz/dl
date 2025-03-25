@@ -103,15 +103,19 @@ def download_and_decrypt_segment(segment_url, key=None, iv=None, output_path=Non
         return
     attempt = 0
     segment_data = None
-    while attempt <= 5:
+    while attempt < 5:
         try:
+            print(f"Downloading segment: {segment_url} (Attempt {attempt+1})")
             response = requests.get(segment_url, stream=True, timeout=15)
             response.raise_for_status()
             segment_data = response.content
             break
-        except Exception:
+        except Exception as e:
+            print(f"Error downloading segment {segment_url}: {e}")
             attempt += 1
+            time.sleep(2)  # short delay before retry
     if not segment_data:
+        print(f"Skipping segment {segment_url} after 5 failed attempts.")
         return
     ext = get_file_extension(segment_url)
     if ext == "tsa":
@@ -124,11 +128,19 @@ def download_and_decrypt_segment(segment_url, key=None, iv=None, output_path=Non
         segment_data = decode_video_tsd(segment_data.decode("utf-8"))
     elif ext == "tse":
         segment_data = decode_video_tse(segment_data.decode("utf-8"))
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    segment_data = cipher.decrypt(segment_data)
-    with open(output_path + ".bak", "wb") as f:
-        f.write(segment_data)
-    os.rename(output_path + ".bak", output_path)
+    try:
+        cipher = AES.new(key, AES.MODE_CBC, iv)
+        segment_data = cipher.decrypt(segment_data)
+    except Exception as e:
+        print(f"Error decrypting segment {segment_url}: {e}")
+        return
+    try:
+        with open(output_path + ".bak", "wb") as f:
+            f.write(segment_data)
+        os.rename(output_path + ".bak", output_path)
+        print(f"Segment saved to {output_path}")
+    except Exception as e:
+        print(f"Error saving segment {segment_url}: {e}")
 
 def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, max_segment=0):
     os.makedirs(directory, exist_ok=True)
@@ -152,12 +164,21 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
             t.start()
         for t in threads:
             t.join()
-    with open(output_file + ".bak", "wb") as output:
-        for segment_file in segment_files:
-            with open(directory + segment_file, "rb") as seg:
-                output.write(seg.read())
-            os.remove(directory + segment_file)
-    os.rename(output_file + ".bak", output_file)
+    # Combine segments
+    try:
+        with open(output_file + ".bak", "wb") as output:
+            for segment_file in segment_files:
+                seg_path = directory + segment_file
+                if os.path.exists(seg_path):
+                    with open(seg_path, "rb") as seg:
+                        output.write(seg.read())
+                    os.remove(seg_path)
+                else:
+                    print(f"Warning: Segment file {seg_path} missing.")
+        os.rename(output_file + ".bak", output_file)
+        print(f"Video saved as {output_file}")
+    except Exception as e:
+        print(f"Error combining segments: {e}")
 
 def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_segment=0):
     pattern = r'<script(.*?) id="__NEXT_DATA__"(.*?)>(.*?)</script>'
@@ -167,25 +188,40 @@ def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_
     match = re.search(pattern, html, re.DOTALL)
     if match:
         json_content = match.group(3).strip()
-        decoded = json.loads(json_content)["props"]["pageProps"]
-        datetime_val = decoded["datetime"]
-        token = decoded["token"]
-        iv = decoded["ivb6"]
-        urls = decoded["urls"]
+        try:
+            decoded = json.loads(json_content)["props"]["pageProps"]
+        except Exception as e:
+            print(f"Error decoding JSON: {e}")
+            return None
+        datetime_val = decoded.get("datetime")
+        token = decoded.get("token")
+        iv = decoded.get("ivb6")
+        urls = decoded.get("urls")
+        if not (datetime_val and token and iv and urls):
+            print("Missing required fields in JSON data")
+            return None
         data_dec_key = get_data_enc_key(datetime_val, token)
         one = urls[0]
-        quality = one["quality"]
-        kstr = one["kstr"]
-        jstr = one["jstr"]
+        quality = one.get("quality", "unknown")
+        kstr = one.get("kstr")
+        jstr = one.get("jstr")
         output_file = output_file + " " + quality + ".mp4"
         if os.path.exists(output_file):
             print(f"This video {output_file} is already downloaded")
             return output_file
-        video_dec_key = decrypt_data(kstr, data_dec_key, iv)
-        video_dec_key = base64.b64decode(video_dec_key)
-        video_m3u8 = decrypt_data(jstr, data_dec_key, iv)
+        try:
+            video_dec_key = decrypt_data(kstr, data_dec_key, iv)
+            video_dec_key = base64.b64decode(video_dec_key)
+            video_m3u8 = decrypt_data(jstr, data_dec_key, iv)
+        except Exception as e:
+            print(f"Error during decryption of keys/playlist: {e}")
+            return None
         playlist = m3u8.loads(video_m3u8)
-        download_m3u8_playlist(playlist, output_file, video_dec_key, ".temp/", max_thread, max_segment)
+        try:
+            download_m3u8_playlist(playlist, output_file, video_dec_key, ".temp/", max_thread, max_segment)
+        except Exception as e:
+            print(f"Error in download_m3u8_playlist: {e}")
+            return None
         return output_file
     else:
         print("Failed to extract JSON data from HTML")
