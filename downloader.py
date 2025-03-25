@@ -1,0 +1,192 @@
+# downloader.py
+import re
+import json
+import time
+import os
+import base64
+import hashlib
+import requests
+import m3u8
+import threading
+from base64 import b64decode
+from Crypto.Cipher import AES
+
+def get_data_enc_key(time_val, token):
+    n = time_val[-4:]
+    r = int(n[0])
+    i = int(n[1:3])
+    o = int(n[3])
+    a = time_val + token[r:i]
+    s = hashlib.sha256()
+    s.update(a.encode('utf-8'))
+    c = s.digest()
+    if o == 6:
+        sign = c[:16]
+    elif o == 7:
+        sign = c[:24]
+    else:
+        sign = c
+    key = base64.b64encode(sign).decode('utf-8')
+    return key
+
+def decrypt_data(data, key, ivb):
+    i = b64decode(key)
+    o = b64decode(ivb)
+    a = b64decode(data)
+    cipher = AES.new(i, AES.MODE_CBC, o)
+    l = cipher.decrypt(a)
+    dec = l.decode('utf-8')
+    return dec
+
+def decode_video_tsa(input_string):
+    shift_value = 0xa * 0x2
+    result = ''
+    for char in input_string:
+        char_code = ord(char)
+        xor_result = char_code - shift_value
+        result += chr(xor_result)
+    binary_data = base64.b64decode(result)
+    return binary_data
+
+def decode_video_tsb(input_string):
+    xor_value = 0x3
+    shift_value = 0x2a
+    result = ''
+    for char in input_string:
+        char_code = ord(char)
+        xor_result = char_code >> xor_value
+        shifted_result = xor_result ^ shift_value
+        result += chr(shifted_result)
+    binary_data = base64.b64decode(result)
+    return binary_data
+
+def decode_video_tsc(input_string):
+    shift_value = 0xa
+    result = ''
+    for char in input_string:
+        char_code = ord(char)
+        xor_result = char_code - shift_value
+        result += chr(xor_result)
+    binary_data = base64.b64decode(result)
+    return binary_data
+
+def decode_video_tsd(input_string):
+    shift_value = 0x2
+    result = ''
+    for char in input_string:
+        char_code = ord(char)
+        shifted_result = char_code >> shift_value
+        result += chr(shifted_result)
+    binary_data = base64.b64decode(result)
+    return binary_data
+
+def decode_video_tse(input_string):
+    xor_value = 0x3
+    shift_value = 0x2a
+    result = ''
+    for char in input_string:
+        char_code = ord(char)
+        xor_result = char_code ^ shift_value
+        shifted_result = xor_result >> xor_value
+        result += chr(shifted_result)
+    binary_data = base64.b64decode(result)
+    return binary_data
+
+def get_file_extension(url):
+    match = re.search(r'\.\w+$', url)
+    if match:
+        return match.group(0)[1:]
+    return None
+
+def download_and_decrypt_segment(segment_url, key=None, iv=None, output_path=None, bit=7):
+    if os.path.exists(output_path):
+        return
+    attempt = 0
+    segment_data = None
+    while attempt <= 5:
+        try:
+            response = requests.get(segment_url, stream=True, timeout=15)
+            response.raise_for_status()
+            segment_data = response.content
+            break
+        except Exception:
+            attempt += 1
+    if not segment_data:
+        return
+    ext = get_file_extension(segment_url)
+    if ext == "tsa":
+        segment_data = decode_video_tsa(segment_data.decode("utf-8"))
+    elif ext == "tsb":
+        segment_data = decode_video_tsb(segment_data.decode("utf-8"))
+    elif ext == "tsc":
+        segment_data = decode_video_tsc(segment_data.decode("utf-8"))
+    elif ext == "tsd":
+        segment_data = decode_video_tsd(segment_data.decode("utf-8"))
+    elif ext == "tse":
+        segment_data = decode_video_tse(segment_data.decode("utf-8"))
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    segment_data = cipher.decrypt(segment_data)
+    with open(output_path + ".bak", "wb") as f:
+        f.write(segment_data)
+    os.rename(output_path + ".bak", output_path)
+
+def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, max_segment=0):
+    os.makedirs(directory, exist_ok=True)
+    if not playlist.segments:
+        raise ValueError("No segments found in the playlist")
+    segment_files = []
+    for i in range(0, len(playlist.segments), max_thread):
+        threads = []
+        batch = playlist.segments[i:i + max_thread]
+        for j, segment in enumerate(batch):
+            if max_segment and max_segment < i + j:
+                break
+            segment_url = segment.uri
+            segment_file = f"segment_{i+j}.ts"
+            segment_files.append(segment_file)
+            iv = None
+            if segment.key and segment.key.method == "AES-128":
+                iv = bytes.fromhex(segment.key.iv[2:]) if segment.key.iv else None
+            t = threading.Thread(target=download_and_decrypt_segment, args=(segment_url, key, iv, directory + segment_file))
+            threads.append(t)
+            t.start()
+        for t in threads:
+            t.join()
+    with open(output_file + ".bak", "wb") as output:
+        for segment_file in segment_files:
+            with open(directory + segment_file, "rb") as seg:
+                output.write(seg.read())
+            os.remove(directory + segment_file)
+    os.rename(output_file + ".bak", output_file)
+
+def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_segment=0):
+    pattern = r'<script(.*?) id="__NEXT_DATA__"(.*?)>(.*?)</script>'
+    if isFile:
+        with open(html, "r") as f:
+            html = f.read()
+    match = re.search(pattern, html, re.DOTALL)
+    if match:
+        json_content = match.group(3).strip()
+        decoded = json.loads(json_content)["props"]["pageProps"]
+        datetime_val = decoded["datetime"]
+        token = decoded["token"]
+        iv = decoded["ivb6"]
+        urls = decoded["urls"]
+        data_dec_key = get_data_enc_key(datetime_val, token)
+        one = urls[0]
+        quality = one["quality"]
+        kstr = one["kstr"]
+        jstr = one["jstr"]
+        output_file = output_file + " " + quality + ".mp4"
+        if os.path.exists(output_file):
+            print(f"This video {output_file} is already downloaded")
+            return output_file
+        video_dec_key = decrypt_data(kstr, data_dec_key, iv)
+        video_dec_key = base64.b64decode(video_dec_key)
+        video_m3u8 = decrypt_data(jstr, data_dec_key, iv)
+        playlist = m3u8.loads(video_m3u8)
+        download_m3u8_playlist(playlist, output_file, video_dec_key, ".temp/", max_thread, max_segment)
+        return output_file
+    else:
+        print("Failed to extract JSON data from HTML")
+        return None
