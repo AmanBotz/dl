@@ -1,7 +1,7 @@
 # main.py
 import threading
 import time
-from bot import run_bot
+from bot import app, run_bot
 from flask_app import run_flask
 
 def main():
