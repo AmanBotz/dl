@@ -127,7 +127,7 @@ def get_video_html(token):
 
 app = Client("parmar_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
 
-# States: course, subject, topic, video, quality
+# Bot state flow: course -> subject -> topic -> video -> quality -> download
 @app.on_message(filters.command("start"))
 def start_handler(client, message: Message):
     chat_id = message.chat.id
@@ -208,21 +208,18 @@ def text_handler(client, message: Message):
             return
         selected_video = videos[choice - 1]
         state["selected_video"] = selected_video
-        # Retrieve video token and HTML
         token = get_video_token(state["selected_course"]["id"], selected_video["id"])
         html = get_video_html(token)
-        # Extract quality options from HTML
+        # Extract quality options
         decoded_data, quality_list = extract_quality_options(html)
         if not quality_list:
-            # No quality options, default to original flow
             state["video_html"] = html
             state["quality_data"] = None
             state["selected_quality_index"] = 0
             state["step"] = "download"
-            message.reply_text("No quality options found, proceeding with default.")
+            message.reply_text("No quality options found, proceeding with default quality.")
             process_video_download(chat_id, state)
         else:
-            # Present quality options to user
             text = "Select quality:\n"
             for idx, q in enumerate(quality_list, start=1):
                 text += f"{idx}. {q}\n"
@@ -232,7 +229,6 @@ def text_handler(client, message: Message):
             state["step"] = "quality"
             message.reply_text(text)
     elif state["step"] == "quality":
-        # Process quality selection
         quality_options = state.get("quality_options", [])
         if not (1 <= choice <= len(quality_options)):
             message.reply_text("Invalid quality number. Try again.")
@@ -242,7 +238,6 @@ def text_handler(client, message: Message):
         message.reply_text(f"Selected quality: {quality_options[choice-1]}\nStarting download...")
         process_video_download(chat_id, state)
     elif state["step"] == "download":
-        # Should not reach here as download is automatic
         message.reply_text("Processing download...")
 
 def process_video_download(chat_id: int, state):
@@ -253,16 +248,13 @@ def process_video_download(chat_id: int, state):
     print(f"[Bot] Video title: {video_title}")
     html = state.get("video_html")
     if not html:
-        message = "Error: No video HTML found."
-        print("[Bot] " + message)
+        print("[Bot] No video HTML found.")
         return
-    # Get quality index from state (default 0)
     quality_index = state.get("selected_quality_index", 0)
     output_file = f"{video_title}"
     print(f"[Bot] Initiating download via downloader module using quality index {quality_index}.")
     result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=5, max_segment=0, quality_index=quality_index)
     if result and os.path.exists(result):
-        # Get metadata with ffprobe
         duration, width, height = ffprobe_info(result)
         if duration is None:
             duration = 0
@@ -295,7 +287,8 @@ def process_video_download(chat_id: int, state):
         app.send_message(chat_id=chat_id, text="Failed to download video.")
         print("[Bot] Failed to download video.")
 
+def run_bot():
+    app.run()
+
 if __name__ == "__main__":
-    def run_bot():
-        app.run()
     run_bot()
