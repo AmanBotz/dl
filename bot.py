@@ -8,7 +8,7 @@ import subprocess
 import requests
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from config import BOT_TOKEN, API_ID, API_HASH, USER_ID, AUTHORIZATION
+from config import BOT_TOKEN, API_ID, API_HASH, USER_ID, AUTHORIZATION, MAX_THREADS
 from downloader import handle_download_start, extract_quality_options
 
 # Helper functions for metadata extraction
@@ -127,7 +127,7 @@ def get_video_html(token):
 
 app = Client("parmar_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
 
-# Bot state flow: course -> subject -> topic -> video -> quality -> download
+# State steps: course, subject, topic, video, quality, download
 @app.on_message(filters.command("start"))
 def start_handler(client, message: Message):
     chat_id = message.chat.id
@@ -217,7 +217,7 @@ def text_handler(client, message: Message):
             state["quality_data"] = None
             state["selected_quality_index"] = 0
             state["step"] = "download"
-            message.reply_text("No quality options found, proceeding with default quality.")
+            message.reply_text("No quality options found, proceeding with default.")
             process_video_download(chat_id, state)
         else:
             text = "Select quality:\n"
@@ -248,12 +248,12 @@ def process_video_download(chat_id: int, state):
     print(f"[Bot] Video title: {video_title}")
     html = state.get("video_html")
     if not html:
-        print("[Bot] No video HTML found.")
+        print("[Bot] Error: No video HTML found.")
         return
     quality_index = state.get("selected_quality_index", 0)
     output_file = f"{video_title}"
     print(f"[Bot] Initiating download via downloader module using quality index {quality_index}.")
-    result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=5, max_segment=0, quality_index=quality_index)
+    result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=MAX_THREADS, max_segment=0, quality_index=quality_index)
     if result and os.path.exists(result):
         duration, width, height = ffprobe_info(result)
         if duration is None:
@@ -287,8 +287,7 @@ def process_video_download(chat_id: int, state):
         app.send_message(chat_id=chat_id, text="Failed to download video.")
         print("[Bot] Failed to download video.")
 
-def run_bot():
-    app.run()
-
 if __name__ == "__main__":
+    def run_bot():
+        app.run()
     run_bot()
