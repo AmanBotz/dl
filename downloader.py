@@ -163,7 +163,6 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
             t.join()
         if max_segment and (i + len(batch)) >= max_segment:
             break
-    # Sort segment files by numerical index
     segment_files = sorted(segment_files, key=lambda f: int(re.search(r'_(\d+)\.ts$', f).group(1)))
     print("[Downloader] Combining segments in sorted order...")
     try:
@@ -235,7 +234,7 @@ def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_
             print("[Downloader] Missing required fields in JSON data.")
             return None
         data_dec_key = get_data_enc_key(datetime_val, token)
-        # Choose the quality option based on quality_index (if provided)
+        # Choose quality option based on provided quality_index
         if quality_index is not None and quality_index < len(urls):
             chosen = urls[quality_index]
         else:
