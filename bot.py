@@ -58,9 +58,6 @@ def extract_thumbnail(filepath, thumb_path):
         return None
     return thumb_path
 
-BASE_URL = "https://parmaracademyapi.classx.co.in"
-user_state = {}
-
 def get_all_courses():
     url = f"{BASE_URL}/get/courselist?exam_name=&start=0"
     response = requests.get(url, headers={
@@ -125,9 +122,9 @@ def get_video_html(token):
     html = html.replace('href="/', 'href="https://www.parmaracademy.in/')
     return html
 
-app = Client("parmar_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
+BASE_URL = "https://parmaracademyapi.classx.co.in"
+user_state = {}
 
-# State steps: course, subject, topic, video, quality, download
 @app.on_message(filters.command("start"))
 def start_handler(client, message: Message):
     chat_id = message.chat.id
@@ -210,7 +207,6 @@ def text_handler(client, message: Message):
         state["selected_video"] = selected_video
         token = get_video_token(state["selected_course"]["id"], selected_video["id"])
         html = get_video_html(token)
-        # Extract quality options
         decoded_data, quality_list = extract_quality_options(html)
         if not quality_list:
             state["video_html"] = html
@@ -287,7 +283,9 @@ def process_video_download(chat_id: int, state):
         app.send_message(chat_id=chat_id, text="Failed to download video.")
         print("[Bot] Failed to download video.")
 
+def run_bot():
+    app.run()
+
+# Expose run_bot so main.py can import it
 if __name__ == "__main__":
-    def run_bot():
-        app.run()
     run_bot()
