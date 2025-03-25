@@ -11,7 +11,7 @@ from pyrogram.types import Message
 from config import BOT_TOKEN, API_ID, API_HASH, USER_ID, AUTHORIZATION, MAX_THREADS
 from downloader import handle_download_start, extract_quality_options
 
-# Initialize Pyrogram Client immediately so decorators can use it.
+# Initialize Pyrogram Client immediately so decorators work.
 app = Client("parmar_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
 
 # Helper functions for metadata extraction
