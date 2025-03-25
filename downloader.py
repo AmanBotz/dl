@@ -148,7 +148,6 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
         threads = []
         batch = playlist.segments[i:i + max_thread]
         for j, segment in enumerate(batch):
-            # Use full video download (max_segment=0 means no limit)
             if max_segment and (i + j) >= max_segment:
                 break
             segment_url = segment.uri
@@ -184,7 +183,6 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
         print(f"[Downloader] Error combining segments: {e}")
         return None
 
-    # Repackage TS file into MP4 using FFmpeg
     final_output = output_file + ".mp4"
     try:
         print(f"[Downloader] Repackaging {combined_ts} into {final_output} using FFmpeg...")
@@ -196,8 +194,27 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
         print(f"[Downloader] Error repackaging video: {e}")
         return combined_ts
 
-def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_segment=0):
-    print("[Downloader] Extracting JSON data from HTML.")
+def extract_quality_options(html):
+    print("[Downloader] Extracting quality options from HTML.")
+    pattern = r'<script(.*?) id="__NEXT_DATA__"(.*?)>(.*?)</script>'
+    match = re.search(pattern, html, re.DOTALL)
+    if not match:
+        print("[Downloader] No JSON data found in HTML.")
+        return None, None
+    json_content = match.group(3).strip()
+    try:
+        decoded = json.loads(json_content)["props"]["pageProps"]
+    except Exception as e:
+        print(f"[Downloader] Error decoding JSON: {e}")
+        return None, None
+    urls = decoded.get("urls")
+    if not urls:
+        return None, None
+    quality_list = [item.get("quality", "unknown") for item in urls]
+    return decoded, quality_list
+
+def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_segment=0, quality_index=None):
+    print("[Downloader] Starting handle_download_start.")
     pattern = r'<script(.*?) id="__NEXT_DATA__"(.*?)>(.*?)</script>'
     if isFile:
         with open(html, "r") as f:
@@ -218,24 +235,19 @@ def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_
             print("[Downloader] Missing required fields in JSON data.")
             return None
         data_dec_key = get_data_enc_key(datetime_val, token)
-        # Search for the 360p URL, if available:
-        chosen = None
-        for item in urls:
-            if item.get("quality") == "360p":
-                chosen = item
-                break
-        if not chosen:
+        # Choose the quality option based on quality_index (if provided)
+        if quality_index is not None and quality_index < len(urls):
+            chosen = urls[quality_index]
+        else:
             chosen = urls[0]
         quality = chosen.get("quality", "unknown")
-        # Force quality to 360p for testing
-        quality = "360p"
-        kstr = chosen.get("kstr")
-        jstr = chosen.get("jstr")
         output_file = output_file + " " + quality
         if os.path.exists(output_file + ".mp4") or os.path.exists(output_file + ".ts"):
             print(f"[Downloader] Video already downloaded: {output_file}")
             return output_file + ".mp4" if os.path.exists(output_file + ".mp4") else output_file + ".ts"
         try:
+            kstr = chosen.get("kstr")
+            jstr = chosen.get("jstr")
             video_dec_key = decrypt_data(kstr, data_dec_key, iv)
             video_dec_key = base64.b64decode(video_dec_key)
             video_m3u8 = decrypt_data(jstr, data_dec_key, iv)
