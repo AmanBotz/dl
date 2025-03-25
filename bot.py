@@ -11,6 +11,9 @@ from pyrogram.types import Message
 from config import BOT_TOKEN, API_ID, API_HASH, USER_ID, AUTHORIZATION, MAX_THREADS
 from downloader import handle_download_start, extract_quality_options
 
+# Initialize the Pyrogram client first
+app = Client("parmar_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
+
 # Helper functions for metadata extraction
 def run_cmd(cmd):
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
@@ -57,6 +60,9 @@ def extract_thumbnail(filepath, thumb_path):
     if code != 0 or not os.path.exists(thumb_path):
         return None
     return thumb_path
+
+BASE_URL = "https://parmaracademyapi.classx.co.in"
+user_state = {}
 
 def get_all_courses():
     url = f"{BASE_URL}/get/courselist?exam_name=&start=0"
@@ -121,9 +127,6 @@ def get_video_html(token):
     html = html.replace('src="/', 'src="https://www.parmaracademy.in/')
     html = html.replace('href="/', 'href="https://www.parmaracademy.in/')
     return html
-
-BASE_URL = "https://parmaracademyapi.classx.co.in"
-user_state = {}
 
 @app.on_message(filters.command("start"))
 def start_handler(client, message: Message):
@@ -286,6 +289,5 @@ def process_video_download(chat_id: int, state):
 def run_bot():
     app.run()
 
-# Expose run_bot so main.py can import it
 if __name__ == "__main__":
     run_bot()
