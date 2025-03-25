@@ -185,7 +185,8 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
     final_output = output_file + ".mp4"
     try:
         print(f"[Downloader] Repackaging {combined_ts} into {final_output} using FFmpeg...")
-        subprocess.run(["ffmpeg", "-y", "-i", combined_ts, "-c", "copy", final_output], check=True)
+        # Updated ffmpeg command with timestamp regeneration
+        subprocess.run(["ffmpeg", "-y", "-fflags", "+genpts", "-avoid_negative_ts", "make_zero", "-i", combined_ts, "-c", "copy", final_output], check=True)
         print(f"[Downloader] Video repackaged successfully into {final_output}")
         os.remove(combined_ts)
         return final_output
@@ -234,7 +235,6 @@ def handle_download_start(html, isFile=False, output_file="", max_thread=1, max_
             print("[Downloader] Missing required fields in JSON data.")
             return None
         data_dec_key = get_data_enc_key(datetime_val, token)
-        # Choose quality based on quality_index
         if quality_index is not None and quality_index < len(urls):
             chosen = urls[quality_index]
         else:
