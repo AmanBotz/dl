@@ -179,20 +179,19 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
 
     final_output = output_file + ".mp4"
     try:
-        print(f"[Downloader] Repackaging {combined_ts} into {final_output} using FFmpeg (re-encoding)...")
+        print(f"[Downloader] Converting {combined_ts} to {final_output} using FFmpeg...")
+        # New command: re-encode the combined TS file into MP4
         subprocess.run([
-            "ffmpeg", "-y",
-            "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
-            "-i", combined_ts,
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+            "ffmpeg", "-y", "-i", combined_ts,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
             "-c:a", "aac", "-b:a", "128k",
             final_output
         ], check=True)
-        print(f"[Downloader] Video repackaged successfully into {final_output}")
+        print(f"[Downloader] Video converted successfully into {final_output}")
         os.remove(combined_ts)
         return final_output
     except Exception as e:
-        print(f"[Downloader] Error repackaging video: {e}")
+        print(f"[Downloader] Error converting video: {e}")
         return combined_ts
 
 def extract_quality_options(html):
