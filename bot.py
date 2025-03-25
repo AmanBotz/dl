@@ -252,7 +252,8 @@ def process_video_download(chat_id: int, state):
     quality_index = state.get("selected_quality_index", 0)
     output_file = f"{video_title}"
     print(f"[Bot] Initiating download via downloader module using quality index {quality_index}.")
-    result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=MAX_THREADS, max_segment=0, quality_index=quality_index)
+    # Set max_segment=50 to download only the first 50 segments for testing.
+    result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=MAX_THREADS, max_segment=50, quality_index=quality_index)
     if result and os.path.exists(result):
         duration, width, height = ffprobe_info(result)
         if duration is None:
