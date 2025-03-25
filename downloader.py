@@ -50,8 +50,7 @@ def decode_video_tsa(input_string):
     result = ''
     for char in input_string:
         result += chr(ord(char) - shift_value)
-    binary_data = base64.b64decode(result)
-    return binary_data
+    return base64.b64decode(result)
 
 def decode_video_tsb(input_string):
     xor_value = 0x3
@@ -59,24 +58,21 @@ def decode_video_tsb(input_string):
     result = ''
     for char in input_string:
         result += chr((ord(char) >> xor_value) ^ shift_value)
-    binary_data = base64.b64decode(result)
-    return binary_data
+    return base64.b64decode(result)
 
 def decode_video_tsc(input_string):
     shift_value = 0xa
     result = ''
     for char in input_string:
         result += chr(ord(char) - shift_value)
-    binary_data = base64.b64decode(result)
-    return binary_data
+    return base64.b64decode(result)
 
 def decode_video_tsd(input_string):
     shift_value = 0x2
     result = ''
     for char in input_string:
         result += chr(ord(char) >> shift_value)
-    binary_data = base64.b64decode(result)
-    return binary_data
+    return base64.b64decode(result)
 
 def decode_video_tse(input_string):
     xor_value = 0x3
@@ -84,8 +80,7 @@ def decode_video_tse(input_string):
     result = ''
     for char in input_string:
         result += chr((ord(char) ^ shift_value) >> xor_value)
-    binary_data = base64.b64decode(result)
-    return binary_data
+    return base64.b64decode(result)
 
 def get_file_extension(url):
     match = re.search(r'\.\w+$', url)
@@ -184,9 +179,15 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
 
     final_output = output_file + ".mp4"
     try:
-        print(f"[Downloader] Repackaging {combined_ts} into {final_output} using FFmpeg...")
-        # Updated ffmpeg command with timestamp regeneration
-        subprocess.run(["ffmpeg", "-y", "-fflags", "+genpts", "-avoid_negative_ts", "make_zero", "-i", combined_ts, "-c", "copy", final_output], check=True)
+        print(f"[Downloader] Repackaging {combined_ts} into {final_output} using FFmpeg (re-encoding)...")
+        subprocess.run([
+            "ffmpeg", "-y",
+            "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
+            "-i", combined_ts,
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+            "-c:a", "aac", "-b:a", "128k",
+            final_output
+        ], check=True)
         print(f"[Downloader] Video repackaged successfully into {final_output}")
         os.remove(combined_ts)
         return final_output
