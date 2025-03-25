@@ -1,8 +1,11 @@
-# flask_app.py
 from flask import Flask, jsonify
 from config import PORT
 
 app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "Bot server is running", 200
 
 @app.route("/health")
 def health_check():
