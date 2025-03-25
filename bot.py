@@ -12,7 +12,6 @@ from downloader import handle_download_start
 BASE_URL = "https://parmaracademyapi.classx.co.in"
 user_state = {}
 
-# ---------- API CALL FUNCTIONS ----------
 def get_all_courses():
     url = f"{BASE_URL}/get/courselist?exam_name=&start=0"
     response = requests.get(url, headers={
@@ -78,7 +77,6 @@ def get_video_html(token):
     html = html.replace('"quality":"360p","isPremier":', '"quality":"720p","isPremier":')
     return html
 
-# ---------- BOT HANDLERS ----------
 app = Client("parmar_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
 
 @app.on_message(filters.command("start"))
@@ -98,14 +96,12 @@ def text_handler(client, message: Message):
     if chat_id not in user_state:
         message.reply_text("Please send /start to begin.")
         return
-
     state = user_state[chat_id]
     try:
         choice = int(message.text.strip())
     except ValueError:
         message.reply_text("Please send a valid number corresponding to the option.")
         return
-
     if state["step"] == "course":
         courses = state.get("courses", [])
         if not (1 <= choice <= len(courses)):
@@ -162,11 +158,12 @@ def text_handler(client, message: Message):
             return
         selected_video = videos[choice - 1]
         state["selected_video"] = selected_video
-        sent_msg = message.reply_text(f"Selected video: {selected_video['Title']}\nStarting download...")
-        threading.Thread(target=process_video_download, args=(chat_id, sent_msg, state)).start()
+        sent_msg = message.reply_text(f"Selected video: {selected_video['Title']}\nStarting download of first segment only...")
+        # For testing only one segment, pass max_segment=1.
+        threading.Thread(target=process_video_download, args=(chat_id, sent_msg, state, 1)).start()
         state.clear()
 
-def process_video_download(chat_id: int, sent_msg, state):
+def process_video_download(chat_id: int, sent_msg, state, max_seg):
     print("[Bot] Starting video download process.")
     course_id = state["selected_course"]["id"]
     video_id = state["selected_video"]["id"]
@@ -180,15 +177,15 @@ def process_video_download(chat_id: int, sent_msg, state):
         sent_msg.reply_text("Token expired. Please try again later.")
         return
     output_file = f"{video_title}"
-    print("[Bot] Initiating download via downloader module.")
-    result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=5, max_segment=0)
+    print("[Bot] Initiating download via downloader module (first segment only).")
+    result = handle_download_start(html, isFile=False, output_file=output_file, max_thread=5, max_segment=max_seg)
     if result and os.path.exists(result):
-        sent_msg.reply_text("Download complete! Sending video...")
+        sent_msg.reply_text("Download complete! Sending video (first segment)...")
         print(f"[Bot] Download complete. Sending video: {result}")
         app.send_video(chat_id, result, caption=video_title)
     else:
-        sent_msg.reply_text("Failed to download video.")
-        print("[Bot] Failed to download video.")
+        sent_msg.reply_text("Failed to download video segment.")
+        print("[Bot] Failed to download video segment.")
 
 def run_bot():
     app.run()
