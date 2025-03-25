@@ -179,12 +179,11 @@ def download_m3u8_playlist(playlist, output_file, key, directory, max_thread=1, 
 
     final_output = output_file + ".mp4"
     try:
-        print(f"[Downloader] Converting {combined_ts} to {final_output} using FFmpeg...")
-        # New command: re-encode the combined TS file into MP4
+        print(f"[Downloader] Converting {combined_ts} to {final_output} using FFmpeg with stream copy...")
         subprocess.run([
-            "ffmpeg", "-y", "-i", combined_ts,
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
-            "-c:a", "aac", "-b:a", "128k",
+            "ffmpeg", "-y", "-fflags", "+genpts", "-avoid_negative_ts", "make_zero",
+            "-i", combined_ts,
+            "-c", "copy",
             final_output
         ], check=True)
         print(f"[Downloader] Video converted successfully into {final_output}")
