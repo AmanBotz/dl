@@ -1,19 +1,18 @@
-FROM python:3.9-slim
+# Dockerfile
+FROM python:3.10-slim
 
+# Set working directory
 WORKDIR /app
 
-# Install system dependency (ffmpeg is no longer used for merging, but still useful for potential diagnostics)
-RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
-
-# Copy requirements and install Python packages
+# Copy and install requirements
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the code
+# Copy the application files
 COPY . .
 
-# Expose port 8000 (if you plan to use a webhook or monitoring endpoint)
+# Expose port 8000 for health checks
 EXPOSE 8000
 
-# Start the bot
+# Run the main application
 CMD ["python", "main.py"]
